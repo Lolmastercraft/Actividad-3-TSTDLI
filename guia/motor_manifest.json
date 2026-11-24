@@ -13,7 +13,7 @@
     "corpus/v2-revisor/sec-10-mantenibilidad.md": "502284e849df3a93a5537a58b78725387f768b0ff11287cc7c8a541c6c033f78",
     "datos/v2-revisor/codigo/limites.py": "fb2d0d2818eaa7be226e2e712435e59d2547a0c8afa72b094c244d0c8dcc318d",
     "datos/v2-revisor/codigo/tokens.py": "34aba0eb860870fb99e8f699227d06a5923b253a391b0f8a8e56286fb3d361c5",
-    "guia/demo_revisor.py": "75127ff1455fc8dd302b4e103eddd9b5e13d948acec12ebae09e3956ef24cc10",
+    "guia/demo_revisor.py": "14c2bcb6ebf1f84a145ad0fec8ada26aea8440ac00695c506830d6fd3d7e737c",
     "prompts/esquemas/rev_detectar.schema.json": "4a5e73fee9f0435641e78df1b8e747bb94647e70d8d343a820360a98f82dbbfa",
     "prompts/esquemas/rev_dictamen.schema.json": "3eef1f93307264ddc4a700279101615bc050242e1363af70ad982183c5094c37",
     "prompts/esquemas/rev_explicar.schema.json": "ec443637a4c01032f2f7ae09b5931763b13396ffee86e7b93d4832513614aef0",
