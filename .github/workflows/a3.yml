@@ -20,15 +20,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Instalar requisitos y fijar el motor del Avance 1
+      - name: Instalar requisitos de la A3
         run: |
           python -m pip install -r requirements.txt
-          python -m guia.preparar_motor
-      - name: Ejecutar pytest y guardar evidencias
+      - name: Probar la API sin el repositorio del equipo
         shell: bash
         run: |
           mkdir -p "$A3_EVIDENCIAS"
-          python -m pytest tests/test_a3_*.py -vv --color=no | tee "$A3_EVIDENCIAS/pytest.txt"
+          python -m pytest tests -m 'not motor_local' -vv --color=no | tee "$A3_EVIDENCIAS/pytest.txt"
+      - name: Medir las versiones de login
+        run: python -m guia.medir_login "$A3_EVIDENCIAS/tiempos.json"
       - name: Mostrar resultados HTTP y de integración
         shell: bash
         run: |
@@ -50,11 +51,62 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Publicar etiqueta verificada
         run: |
-          if git ls-remote --tags --exit-code origin refs/tags/a3-lolmastercraft; then
-            echo 'La etiqueta de entrega ya existe.'
+          referencia=refs/tags/a3-lolmastercraft
+          anterior=$(git ls-remote --refs origin "$referencia" | cut -f 1)
+          if [ "$anterior" = "$GITHUB_SHA" ]; then
+            echo 'La etiqueta coincide con la revisión verificada.'
+          elif [ -z "$anterior" ]; then
+            git push origin "$GITHUB_SHA:$referencia"
           else
-            git tag a3-lolmastercraft "$GITHUB_SHA"
-            git push origin refs/tags/a3-lolmastercraft
+            git merge-base --is-ancestor "$anterior" "$GITHUB_SHA"
+            git push --force-with-lease="$referencia:$anterior" origin "$GITHUB_SHA:$referencia"
           fi
+
+  gemini:
+    name: Gemini real, si está habilitado
+    needs: verificar
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Comprobar configuración del proveedor
+        id: proveedor
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -n "$GEMINI_API_KEY" ]; then
+            echo 'activo=si' >> "$GITHUB_OUTPUT"
+          else
+            echo 'activo=no' >> "$GITHUB_OUTPUT"
+            echo 'Gemini quedó pendiente de configuración.'
+          fi
+      - uses: actions/checkout@v4
+        if: steps.proveedor.outputs.activo == 'si'
+      - uses: actions/setup-python@v5
+        if: steps.proveedor.outputs.activo == 'si'
+        with:
+          python-version: '3.12'
+      - name: Preparar el motor fijado para Gemini
+        if: steps.proveedor.outputs.activo == 'si'
+        run: |
+          python -m pip install -r requirements.txt
+          python -m guia.preparar_motor --descargar
+      - name: Ejecutar los dos casos con Gemini
+        if: steps.proveedor.outputs.activo == 'si'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_MODEL: gemini-3.1-flash-lite
+          LLM_TIMEOUT: 35
+          LLM_RETRIES: 2
+        run: python -m guia.ejecutar_gemini evidencias/gemini.json
+      - uses: actions/upload-artifact@v4
+        if: steps.proveedor.outputs.activo == 'si'
+        with:
+          name: evidencia-gemini
+          path: evidencias/gemini.json
+          if-no-files-found: error

@@ -1,5 +1,7 @@
 """Conexión al motor original del Avance 1 instalado junto al servicio."""
 import importlib
+import hashlib
+import json
 import os
 import sys
 from functools import lru_cache
@@ -13,6 +15,17 @@ class MotorNoDisponible(RuntimeError):
     """Falta el motor esperado o su proveedor temporalmente no está disponible."""
 
 
+def verificar_snapshot(carpeta: Path) -> None:
+    """Verifica el conjunto de archivos aprobado para la instalación local."""
+    manifiesto = json.loads((RAIZ / "guia" / "motor_manifest.json").read_text(encoding="utf-8"))
+    if manifiesto["revision"] != REVISION:
+        raise MotorNoDisponible("Manifiesto de motor inesperado")
+    for nombre, sha in manifiesto["sha256"].items():
+        archivo = carpeta / nombre
+        if not archivo.is_file() or hashlib.sha256(archivo.read_bytes()).hexdigest() != sha:
+            raise MotorNoDisponible(f"El motor local no pasa la verificación: {nombre}")
+
+
 @lru_cache(maxsize=1)
 def cargar_motor():
     carpeta = Path(os.getenv("FINNORTE_MOTOR", str(RAIZ / ".motor"))).resolve()
@@ -20,6 +33,7 @@ def cargar_motor():
     try:
         if (carpeta / "REVISION").read_text(encoding="ascii").strip() != REVISION or not origen.is_file():
             raise MotorNoDisponible("Revisión de motor inesperada")
+        verificar_snapshot(carpeta)
         os.environ.setdefault("FINNORTE_DIR_TRAZAS", str(RAIZ / "bitacora" / "motor"))
         sys.path.insert(0, str(carpeta / "src"))
         variante = importlib.import_module("finnorte.variante")

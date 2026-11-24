@@ -17,6 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
+from pydantic_core import PydanticCustomError
 from starlette.exceptions import HTTPException
 
 from api import auth, motor
@@ -63,11 +64,14 @@ class EntradaRevisor(BaseModel):
     @classmethod
     def validar_python(cls, valor: str) -> str:
         if not valor.strip():
-            raise ValueError("El código está vacío.")
+            raise PydanticCustomError("codigo_vacio", "El código está vacío.")
         try:
             ast.parse(valor)
-        except (SyntaxError, ValueError, RecursionError) as exc:
-            raise ValueError("El código debe ser Python sintácticamente válido.") from exc
+        except SyntaxError as exc:
+            raise PydanticCustomError("codigo_sintaxis", "Sintaxis Python inválida en la línea {linea}.",
+                                      {"linea": exc.lineno or 1}) from None
+        except (ValueError, RecursionError):
+            raise PydanticCustomError("codigo_profundidad", "El código excede la complejidad que puedo analizar.") from None
         return valor
 
 
@@ -82,6 +86,30 @@ def problema(status: int, detalle: str, headers: dict | None = None) -> JSONResp
         "detail": detalle,
         "trace_id": uuid4().hex,
     })
+
+
+def detalle_validacion(error: RequestValidationError) -> str:
+    reglas = {
+        "missing": "campo obligatorio",
+        "string_type": "debe ser texto",
+        "string_too_short": "el texto es demasiado corto",
+        "string_too_long": "excede la longitud permitida",
+        "codigo_vacio": "el código está vacío",
+        "codigo_profundidad": "el código excede la profundidad que puedo analizar",
+        "json_invalid": "JSON inválido",
+        "extra_forbidden": "contiene campos adicionales no permitidos",
+    }
+    mensajes = []
+    for problema_entrada in error.errors():
+        ubicacion = problema_entrada["loc"]
+        clave = ubicacion[1] if len(ubicacion) > 1 else "cuerpo"
+        campo = clave if clave in ("codigo", "email", "contrasena") else "cuerpo"
+        tipo = problema_entrada["type"]
+        mensaje = reglas.get(tipo, "formato inválido")
+        if tipo == "codigo_sintaxis":
+            mensaje = f"sintaxis Python inválida en la línea {problema_entrada['ctx']['linea']}"
+        mensajes.append(f"{campo}: {mensaje}")
+    return ". ".join(dict.fromkeys(mensajes)) + "."
 
 
 bearer = HTTPBearer(auto_error=False)
@@ -116,8 +144,8 @@ def crear_app(ruta_db: str | None = None, maximo: int | None = None) -> FastAPI:
         return problema(error.status, str(error))
 
     @servicio.exception_handler(RequestValidationError)
-    async def manejar_validacion(_request: Request, _error: RequestValidationError):
-        return problema(422, "La entrada no cumple el formato requerido. Consulta /docs.")
+    async def manejar_validacion(_request: Request, error: RequestValidationError):
+        return problema(422, detalle_validacion(error))
 
     @servicio.exception_handler(HTTPException)
     async def manejar_http(_request: Request, error: HTTPException):

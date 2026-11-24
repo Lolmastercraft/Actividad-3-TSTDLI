@@ -1,5 +1,7 @@
 """Separa el acceso a cuentas de la política de autenticación."""
 from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -23,5 +25,17 @@ class ServicioLogin:
         return ACEPTADO if guardado is not None and coincide else DENEGADO
 
 
-def login(user: str, password: str, servicio: ServicioLogin) -> ResultadoLogin:
-    return servicio.autenticar(user, password)
+_servicio: ContextVar[ServicioLogin] = ContextVar("login_mantenible")
+
+
+@contextmanager
+def configurar(servicio: ServicioLogin):
+    anterior = _servicio.set(servicio)
+    try:
+        yield
+    finally:
+        _servicio.reset(anterior)
+
+
+def login(user: str, password: str) -> ResultadoLogin:
+    return _servicio.get().autenticar(user, password)
