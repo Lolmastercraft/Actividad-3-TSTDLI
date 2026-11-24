@@ -1,0 +1,60 @@
+name: Verificación de la Actividad 3
+
+on:
+  push:
+    branches: [actividad-3-lolmastercraft]
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      LLM_PROVIDER: fake
+      EMB_PROVIDER: hash
+      A3_EVIDENCIAS: evidencias/a3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar requisitos y fijar el motor del Avance 1
+        run: |
+          python -m pip install -r requirements.txt
+          python -m guia.preparar_motor
+      - name: Ejecutar pytest y guardar evidencias
+        shell: bash
+        run: |
+          mkdir -p "$A3_EVIDENCIAS"
+          python -m pytest tests/test_a3_*.py -vv --color=no | tee "$A3_EVIDENCIAS/pytest.txt"
+      - name: Mostrar resultados HTTP y de integración
+        shell: bash
+        run: |
+          for archivo in "$A3_EVIDENCIAS"/*.json; do
+            printf '\nEVIDENCIA %s\n' "$(basename "$archivo")"
+            cat "$archivo"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evidencias-actividad-3
+          path: evidencias/a3/
+          if-no-files-found: warn
+
+  etiquetar:
+    needs: verificar
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publicar etiqueta verificada
+        run: |
+          if git ls-remote --tags --exit-code origin refs/tags/a3-lolmastercraft; then
+            echo 'La etiqueta de entrega ya existe.'
+          else
+            git tag a3-lolmastercraft "$GITHUB_SHA"
+            git push origin refs/tags/a3-lolmastercraft
+          fi
