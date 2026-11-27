@@ -1,6 +1,6 @@
 # Actividad 3 · FinNorte v2-revisor
 
-Entrega individual LSCA2318 · Luis Alfonso Juárez Amaro · `Lolmastercraft`.
+Entrega individual LSCA2318 · `Lolmastercraft`.
 
 Integré el registro, inicio de sesión y token del laboratorio con el motor del Avance 1. El endpoint autenticado `POST /v1/v2-revisor` recibe `{"codigo": "<texto Python>"}` y llama a `finnorte.variante.sistema` en la revisión `6c1835b1a556240382c3d678ecec6bf0af6f5948` del [repositorio del equipo](https://github.com/alanrivera066/Project_v2_TSTI).
 
@@ -43,5 +43,6 @@ Conservé `login(user, password)` en los cuatro archivos. En las versiones nueva
 ## Evidencias y fuentes
 
 - [Bitácora de IA](ai_log.md) y [análisis de las cuatro versiones](a3/analisis_login.md).
+- [Corrida con Gemini y artefacto](https://github.com/Lolmastercraft/Actividad-3-TSTDLI/actions/runs/45379207841/job/138393706135).
 - [GitHub Actions](https://github.com/Lolmastercraft/Actividad-3-TSTDLI/actions) registra pytest y conserva las respuestas de prueba sin secretos.
 - [Manual y presentación de la A3](https://github.com/CyberProf-tecmi/lsca2318-lab-a3-a4).
