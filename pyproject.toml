@@ -2,3 +2,4 @@
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = ["motor_local: requiere la copia local verificada del motor del Avance 1"]

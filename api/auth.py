@@ -38,6 +38,12 @@ def _secreto() -> bytes:
     return s.encode()
 
 
+def identificador_intento(email: str) -> str:
+    """Identifica una cuenta en la bitácora mediante HMAC con separación de propósito."""
+    mensaje = b"finnorte/intentos/v1\x00" + email.strip().lower().encode()
+    return hmac.digest(_secreto(), mensaje, "sha256").hex()
+
+
 class ErrorAuth(Exception):
     def __init__(self, status: int, mensaje: str):
         super().__init__(mensaje)
@@ -119,11 +125,29 @@ class Autenticador:
 
     def __post_init__(self):
         self.db = sqlite3.connect(self.ruta_db, check_same_thread=False)
-        self.db.execute("CREATE TABLE IF NOT EXISTS usuarios (email TEXT PRIMARY KEY, hash TEXT NOT NULL)")
-        # Bitácora de intentos: correo, hora y resultado. NUNCA la contraseña.
-        self.db.execute("CREATE TABLE IF NOT EXISTS intentos (email TEXT, ts REAL, ok INTEGER)")
-        self.db.execute("CREATE INDEX IF NOT EXISTS intentos_email_ts ON intentos (email, ts)")
+        self.db.execute("PRAGMA secure_delete = ON")
+        try:
+            self._preparar_tablas()
+        except Exception:
+            self.db.close()
+            raise
         self._hash_dummy = hash_contrasena("solo-para-igualar-el-trabajo")
+
+    def _preparar_tablas(self):
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            self.db.execute("CREATE TABLE IF NOT EXISTS usuarios (email TEXT PRIMARY KEY, hash TEXT NOT NULL)")
+            columnas = {fila[1] for fila in self.db.execute("PRAGMA table_info(intentos)")}
+            if "email" in columnas:
+                self.db.execute("ALTER TABLE intentos RENAME TO intentos_anteriores")
+            self.db.execute("CREATE TABLE IF NOT EXISTS intentos (usuario_id TEXT NOT NULL, ts REAL NOT NULL, ok INTEGER NOT NULL)")
+            if "email" in columnas:
+                anteriores = self.db.execute("SELECT email, ts, ok FROM intentos_anteriores ORDER BY rowid")
+                self.db.executemany("INSERT INTO intentos VALUES (?, ?, ?)", (
+                    (identificador_intento(email), instante, ok) for email, instante, ok in anteriores
+                ))
+                self.db.execute("DROP TABLE intentos_anteriores")
+            self.db.execute("CREATE INDEX IF NOT EXISTS intentos_usuario_ts ON intentos (usuario_id, ts)")
 
     def registrar(self, email: str, contrasena: str) -> None:
         email = email.strip().lower()
@@ -139,13 +163,14 @@ class Autenticador:
 
     def login(self, email: str, contrasena: str, ahora: float | None = None) -> str:
         email = email.strip().lower()
+        usuario_id = identificador_intento(email)
         ahora = time.time() if ahora is None else ahora
         with self._lock, self.db:
             self.db.execute("BEGIN IMMEDIATE")
             recientes = self.db.execute(
-                "SELECT ok FROM intentos WHERE email = ? AND ts > ? AND ts <= ? "
+                "SELECT ok FROM intentos WHERE usuario_id = ? AND ts > ? AND ts <= ? "
                 "ORDER BY ts DESC, rowid DESC LIMIT ?",
-                (email, ahora - VENTANA_FALLOS_S, ahora, MAX_FALLOS),
+                (usuario_id, ahora - VENTANA_FALLOS_S, ahora, MAX_FALLOS),
             ).fetchall()
             if len(recientes) == MAX_FALLOS and not any(ok for (ok,) in recientes):
                 raise ErrorAuth(429, "Bloqueo temporal por intentos fallidos")
@@ -153,7 +178,8 @@ class Autenticador:
             verificada = verificar_contrasena(contrasena, cuenta[0] if cuenta else self._hash_dummy)
             ok = cuenta is not None and verificada
             token = emitir_token(email, ahora) if ok else None
-            self.db.execute("INSERT INTO intentos (email, ts, ok) VALUES (?, ?, ?)", (email, ahora, int(ok)))
+            self.db.execute("INSERT INTO intentos (usuario_id, ts, ok) VALUES (?, ?, ?)",
+                            (usuario_id, ahora, int(ok)))
         if token is None:
             raise ErrorAuth(401, MENSAJE_CREDENCIALES)
         return token

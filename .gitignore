@@ -9,4 +9,6 @@ __pycache__/
 *.db*
 bitacora/*
 !bitacora/.gitkeep
-evidencias/
+/evidencias/*
+!/evidencias/gemini.json
+!/evidencias/tiempos.json
